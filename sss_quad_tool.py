@@ -63,22 +63,21 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background-color:var(-
 """, unsafe_allow_html=True)
 
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
-PREFERRED_BOOKS = ["bet365", "williamhill", "betfair", "unibet", "ladbrokes", "skybet"]
+PREFERRED_BOOKS = ["williamhill", "betfair_ex_uk", "unibet", "ladbrokes", "skybet", "paddypower", "coral"]
 BOOK_LABELS = {
-    "bet365": "Bet365",
-    "williamhill": "William Hill",
-    "betfair": "Betfair Exchange",
-    "unibet": "Unibet",
-    "ladbrokes": "Ladbrokes",
-    "skybet": "SkyBet",
-    "paddypower": "Paddy Power",
-    "coral": "Coral",
-    "betfair_ex_uk": "Betfair Exchange (UK)",
-    "betvictor": "BetVictor",
-    "boylesports": "BoyleSports",
-    "draftkings": "DraftKings",
-    "fanduel": "FanDuel",
-    "pinnacle": "Pinnacle",
+    "williamhill":   "William Hill",
+    "betfair_ex_uk": "Betfair Exchange",
+    "unibet":        "Unibet",
+    "ladbrokes":     "Ladbrokes",
+    "skybet":        "Sky Bet",
+    "paddypower":    "Paddy Power",
+    "coral":         "Coral",
+    "betvictor":     "BetVictor",
+    "boylesports":   "BoyleSports",
+    "betfair":       "Betfair",
+    "pinnacle":      "Pinnacle",
+    "draftkings":    "DraftKings",
+    "fanduel":       "FanDuel",
 }
 
 # ── GITHUB CSV ────────────────────────────────────────────────────────────────
@@ -633,6 +632,15 @@ with tab_ai:
             chosen_idx   = labels.index(chosen_label)
             chosen       = live_matches[chosen_idx]
 
+            # ── Detect match change and clear cached field values ──
+            match_key = chosen["p1"] + "|" + chosen["p2"]
+            if st.session_state.get("_last_match_key") != match_key:
+                st.session_state["_last_match_key"] = match_key
+                # Clear all pre-filled field keys so new values take effect
+                for k in ["p1n","p1s","p1o","p1f","p1st","p2n","p2s","p2o","p2f","p2st","tourn","rnd","surf","book_sel"]:
+                    if k in st.session_state:
+                        del st.session_state[k]
+
             st.markdown(
                 '<div class="match-card" style="margin-top:0.8rem;">'
                 '<div class="match-title">' + chosen["p1"] + ' vs. ' + chosen["p2"] + '</div>'
@@ -646,16 +654,19 @@ with tab_ai:
 
             odds_data     = fetch_tennis_odds()
             avail_books   = get_available_books(odds_data, chosen["p1"], chosen["p2"])
-            book_labels   = [label for _,label in avail_books] if avail_books else [l for k,l in BOOK_LABELS.items() if k in PREFERRED_BOOKS]
-            book_keys     = [key for key,_ in avail_books] if avail_books else [k for k in PREFERRED_BOOKS]
+            # Always show preferred books even when API has no data for this match
+            fallback_books = [(k, BOOK_LABELS[k]) for k in PREFERRED_BOOKS if k in BOOK_LABELS]
+            book_pairs    = avail_books if avail_books else fallback_books
+            book_labels_list = [label for _,label in book_pairs]
+            book_keys_list   = [key   for key,_ in book_pairs]
 
             if not avail_books:
-                st.markdown('<p style="color:#F59E0B;font-size:0.82rem;margin-bottom:0.5rem;">⚠️ No odds found for this match yet — enter manually below or try another match.</p>', unsafe_allow_html=True)
+                st.markdown('<p style="color:#F59E0B;font-size:0.82rem;margin-bottom:0.5rem;">⚠️ No live odds for this match yet — select your book and enter odds manually below.</p>', unsafe_allow_html=True)
 
             bk1, bk2 = st.columns([2,3])
             with bk1:
-                selected_book_label = st.selectbox("Sportsbook", book_labels, key="book_sel")
-                selected_book_key   = book_keys[book_labels.index(selected_book_label)] if book_labels else "bet365"
+                selected_book_label = st.selectbox("Sportsbook", book_labels_list, key="book_sel")
+                selected_book_key   = book_keys_list[book_labels_list.index(selected_book_label)]
 
             p1_dec, p2_dec, book_used = extract_odds_for_match(odds_data, chosen["p1"], chosen["p2"], selected_book_key)
             p1_american = decimal_to_american(p1_dec) if p1_dec else "—"
@@ -671,21 +682,15 @@ with tab_ai:
                         unsafe_allow_html=True
                     )
                 else:
-                    st.markdown('<div style="padding:0.6rem 0;font-size:0.82rem;color:#94A3B8;">Enter odds manually in the fields below.</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="padding:0.6rem 0;font-size:0.82rem;color:#94A3B8;">Odds not yet listed — enter manually in the fields below.</div>', unsafe_allow_html=True)
 
             # ── Fetch player stats ──
             st.markdown('<div class="form-section-title">👤 Player Stats</div>', unsafe_allow_html=True)
-            stats_col1, stats_col2 = st.columns(2)
-
-            with stats_col1:
-                with st.spinner("Fetching " + chosen["p1"].split(",")[0] + " stats..."):
-                    p1_stats = fetch_player_stats(chosen["p1"])
-                    p1_form_api = fetch_player_recent_form(chosen["p1"])
-
-            with stats_col2:
-                with st.spinner("Fetching " + chosen["p2"].split(",")[0] + " stats..."):
-                    p2_stats = fetch_player_stats(chosen["p2"])
-                    p2_form_api = fetch_player_recent_form(chosen["p2"])
+            with st.spinner("Fetching player stats..."):
+                p1_stats    = fetch_player_stats(chosen["p1"])
+                p1_form_api = fetch_player_recent_form(chosen["p1"])
+                p2_stats    = fetch_player_stats(chosen["p2"])
+                p2_form_api = fetch_player_recent_form(chosen["p2"])
 
             pre.update({
                 "p1_name":    chosen["p1"],
