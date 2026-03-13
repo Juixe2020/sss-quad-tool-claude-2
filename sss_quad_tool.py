@@ -532,85 +532,67 @@ st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 # ── Match Preview Card ──────────────────
 st.markdown('<div class="section-label">MATCH PREVIEW</div>', unsafe_allow_html=True)
 
-recent_p1_html = " ".join(
-    f'<span style="color:{"#10B981" if r=="W" else "#EF4444"}; font-weight:700; font-size:0.78rem;">{r}</span>'
-    for r in match["recent_p1"].split()
-)
-recent_p2_html = " ".join(
-    f'<span style="color:{"#10B981" if r=="W" else "#EF4444"}; font-weight:700; font-size:0.78rem;">{r}</span>'
-    for r in match["recent_p2"].split()
-)
+def form_badges(form_str):
+    badges = []
+    for r in form_str.split():
+        color = "#10B981" if r == "W" else "#EF4444"
+        badges.append(f'<span style="color:{color};font-weight:700;font-size:0.9rem;margin-right:3px;">{r}</span>')
+    return "".join(badges)
 
+# Card wrapper open
 st.markdown(f"""
 <div class="match-card">
     <div class="match-title">{match['p1']} vs. {match['p2']}</div>
-    <div class="match-meta">🏆 {match['tournament']} &nbsp;·&nbsp; {match['round']} &nbsp;·&nbsp; 📍 {match['surface']} &nbsp;·&nbsp; 🕐 {match['time']}</div>
-
-    <div class="player-row">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span class="player-seed">{match['p1_seed']}</span>
-            <span class="player-name">{match['p1']}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:0.75rem; color:#94A3B8;">Form: {recent_p1_html}</span>
-            <span class="odds-badge">{match['p1_odds']}</span>
-        </div>
-    </div>
-
-    <div style="text-align:center; font-family:'Space Mono',monospace; font-size:0.68rem;
-                color:#475569; letter-spacing:2px; margin:0.3rem 0;">VS</div>
-
-    <div class="player-row">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span class="player-seed">{match['p2_seed']}</span>
-            <span class="player-name">{match['p2']}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:0.75rem; color:#94A3B8;">Form: {recent_p2_html}</span>
-            <span class="odds-badge">{match['p2_odds']}</span>
-        </div>
-    </div>
-
-    <div class="match-stats-grid">
-        <div class="stat-pill">
-            <div class="stat-pill-label">H2H</div>
-            <div class="stat-pill-value" style="font-size:0.78rem;">{match['h2h']}</div>
-        </div>
-        <div class="stat-pill">
-            <div class="stat-pill-label">Total Line</div>
-            <div class="stat-pill-value">{match['total']}</div>
-        </div>
-        <div class="stat-pill">
-            <div class="stat-pill-label">Court Speed</div>
-            <div class="stat-pill-value" style="font-size:0.78rem;">{match['surface_speed']}</div>
-        </div>
-    </div>
+    <div class="match-meta">🏆 {match['tournament']} &nbsp;·&nbsp; {match['round']} &nbsp;·&nbsp;
+    🎾 {match['surface']} &nbsp;·&nbsp; 🕐 {match['time']}</div>
 </div>
 """, unsafe_allow_html=True)
+
+# Player rows using native Streamlit columns
+col_p1a, col_p1b, col_p1c = st.columns([3, 2, 1])
+with col_p1a:
+    st.markdown(f"**{match['p1']}** &nbsp; `{match['p1_seed']}`", unsafe_allow_html=True)
+with col_p1b:
+    st.markdown(f"Form: {form_badges(match['recent_p1'])}", unsafe_allow_html=True)
+with col_p1c:
+    st.markdown(f'<span style="background:#0d9268;color:#fff;padding:3px 10px;border-radius:6px;font-family:monospace;font-weight:700;">{match["p1_odds"]}</span>', unsafe_allow_html=True)
+
+st.markdown('<p style="text-align:center;color:#475569;font-family:monospace;font-size:0.75rem;letter-spacing:3px;margin:2px 0;">— VS —</p>', unsafe_allow_html=True)
+
+col_p2a, col_p2b, col_p2c = st.columns([3, 2, 1])
+with col_p2a:
+    st.markdown(f"**{match['p2']}** &nbsp; `{match['p2_seed']}`", unsafe_allow_html=True)
+with col_p2b:
+    st.markdown(f"Form: {form_badges(match['recent_p2'])}", unsafe_allow_html=True)
+with col_p2c:
+    st.markdown(f'<span style="background:#0d9268;color:#fff;padding:3px 10px;border-radius:6px;font-family:monospace;font-weight:700;">{match["p2_odds"]}</span>', unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Stats row
+col_s1, col_s2, col_s3 = st.columns(3)
+with col_s1:
+    st.metric("H2H", match["h2h"])
+with col_s2:
+    st.metric("Total Line", match["total"])
+with col_s3:
+    st.metric("Court Speed", match["surface_speed"])
 
 # ── SSS Meter ──────────────────────────
 st.markdown('<div class="section-label">SSS SCORE BREAKDOWN</div>', unsafe_allow_html=True)
 sss = match["sss"]
 
-sss_html = ""
 for key, val in sss.items():
-    bar_width = val
-    sss_html += f"""
-    <div class="sss-row">
-        <div class="sss-label">{key}</div>
-        <div class="sss-bar-bg">
-            <div class="sss-bar-fill" style="width:{bar_width}%;"></div>
-        </div>
-        <div class="sss-val">{val}</div>
-    </div>
-    """
+    col_label, col_bar, col_val = st.columns([1, 6, 0.5])
+    with col_label:
+        st.markdown(f'<span style="font-family:monospace;font-size:0.8rem;color:#10B981;">{key}</span>', unsafe_allow_html=True)
+    with col_bar:
+        st.progress(val / 100)
+    with col_val:
+        st.markdown(f'<span style="font-family:monospace;font-size:0.8rem;color:#94A3B8;">{val}</span>', unsafe_allow_html=True)
+
 avg = sum(sss.values()) // 3
-sss_html += f"""
-<div style="margin-top:0.6rem; font-size:0.8rem; color:#64748B; font-family:'Space Mono',monospace;">
-    SSS COMPOSITE: <span style="color:#10B981; font-weight:700;">{avg}/100</span>
-</div>
-"""
-st.markdown(f'<div style="margin-bottom:1.5rem;">{sss_html}</div>', unsafe_allow_html=True)
+st.markdown(f'<p style="font-family:monospace;font-size:0.8rem;color:#64748B;margin-top:4px;">SSS COMPOSITE: <span style="color:#10B981;font-weight:700;">{avg}/100</span></p>', unsafe_allow_html=True)
 st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 
 # ── Quadrant Breakdown ─────────────────
