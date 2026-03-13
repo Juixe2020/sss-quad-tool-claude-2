@@ -652,13 +652,16 @@ with tab_ai:
             # ── Sportsbook selector & odds fetch ──
             st.markdown('<div class="form-section-title">📚 Sportsbook & Odds</div>', unsafe_allow_html=True)
 
-            odds_data     = fetch_tennis_odds()
-            avail_books   = get_available_books(odds_data, chosen["p1"], chosen["p2"])
-            # Always show preferred books even when API has no data for this match
-            fallback_books = [(k, BOOK_LABELS[k]) for k in PREFERRED_BOOKS if k in BOOK_LABELS]
-            book_pairs    = avail_books if avail_books else fallback_books
-            book_labels_list = [label for _,label in book_pairs]
-            book_keys_list   = [key   for key,_ in book_pairs]
+            odds_data   = fetch_tennis_odds()
+            avail_books = get_available_books(odds_data, chosen["p1"], chosen["p2"])
+
+            # Build full book list: preferred first (always present), then any extras from API
+            preferred_pairs = [(k, BOOK_LABELS[k]) for k in PREFERRED_BOOKS if k in BOOK_LABELS]
+            avail_keys      = {k for k,_ in avail_books}
+            extra_pairs     = [(k,l) for k,l in avail_books if k not in PREFERRED_BOOKS]
+            all_book_pairs  = preferred_pairs + extra_pairs
+            book_labels_list = [l for _,l in all_book_pairs]
+            book_keys_list   = [k for k,_ in all_book_pairs]
 
             if not avail_books:
                 st.markdown('<p style="color:#F59E0B;font-size:0.82rem;margin-bottom:0.5rem;">⚠️ No live odds for this match yet — select your book and enter odds manually below.</p>', unsafe_allow_html=True)
@@ -692,6 +695,24 @@ with tab_ai:
                 p2_stats    = fetch_player_stats(chosen["p2"])
                 p2_form_api = fetch_player_recent_form(chosen["p2"])
 
+            # Write directly into session_state so widgets always reflect current match
+            fills = {
+                "p1n":  chosen["p1"],
+                "p2n":  chosen["p2"],
+                "tourn": chosen["tournament"],
+                "rnd":  chosen["round"],
+                "p1s":  p1_stats.get("ranking","—"),
+                "p2s":  p2_stats.get("ranking","—"),
+                "p1o":  p1_american,
+                "p2o":  p2_american,
+                "p1f":  p1_form_api if p1_form_api and p1_form_api != "—" else "—",
+                "p2f":  p2_form_api if p2_form_api and p2_form_api != "—" else "—",
+                "p1st": p1_stats.get("hand","") + " handed" if p1_stats.get("hand") else "",
+                "p2st": p2_stats.get("hand","") + " handed" if p2_stats.get("hand") else "",
+            }
+            for k, v in fills.items():
+                st.session_state[k] = v
+
             pre.update({
                 "p1_name":    chosen["p1"],
                 "p2_name":    chosen["p2"],
@@ -704,8 +725,8 @@ with tab_ai:
                 "p2_odds":    p2_american,
                 "p1_form":    p1_form_api if p1_form_api and p1_form_api != "—" else "—",
                 "p2_form":    p2_form_api if p2_form_api and p2_form_api != "—" else "—",
-                "p1_strength": (p1_stats.get("hand","") + " handed" if p1_stats.get("hand") else ""),
-                "p2_strength": (p2_stats.get("hand","") + " handed" if p2_stats.get("hand") else ""),
+                "p1_strength": p1_stats.get("hand","") + " handed" if p1_stats.get("hand") else "",
+                "p2_strength": p2_stats.get("hand","") + " handed" if p2_stats.get("hand") else "",
             })
 
             st.markdown('<div class="auto-fill-badge">⚡ Auto-filled — edit as needed</div>', unsafe_allow_html=True)
@@ -716,27 +737,37 @@ with tab_ai:
     else:
         st.markdown('<div class="form-section-title">⚔️ Players & Details</div>', unsafe_allow_html=True)
 
+    # Seed session_state with pre values for first render (won't override user edits)
+    for _k, _v in [("p1n",pre["p1_name"]),("p2n",pre["p2_name"]),("p1s",pre["p1_seed"]),
+                   ("p2s",pre["p2_seed"]),("p1o",pre["p1_odds"]),("p2o",pre["p2_odds"]),
+                   ("p1f",pre["p1_form"]),("p2f",pre["p2_form"]),
+                   ("p1st",pre["p1_strength"]),("p2st",pre["p2_strength"])]:
+        if _k not in st.session_state:
+            st.session_state[_k] = _v
+
     fc1, fc2 = st.columns(2)
     with fc1:
-        p1_name     = st.text_input("Player 1 Name",     value=pre["p1_name"],    placeholder="e.g. Jack Draper",         key="p1n")
-        p1_seed     = st.text_input("P1 Ranking",        value=pre["p1_seed"],    placeholder="e.g. #15",                 key="p1s")
-        p1_odds     = st.text_input("P1 Odds",           value=pre["p1_odds"],    placeholder="e.g. +145",                key="p1o")
-        p1_form     = st.text_input("P1 Last 5 Results", value=pre["p1_form"],    placeholder="W W L W W",                key="p1f")
-        p1_strength = st.text_input("P1 Key Strengths",  value=pre["p1_strength"],placeholder="e.g. Big serve, tiebreaks",key="p1st")
+        p1_name     = st.text_input("Player 1 Name",     placeholder="e.g. Jack Draper",          key="p1n")
+        p1_seed     = st.text_input("P1 Ranking",        placeholder="e.g. #15",                  key="p1s")
+        p1_odds     = st.text_input("P1 Odds",           placeholder="e.g. +145",                 key="p1o")
+        p1_form     = st.text_input("P1 Last 5 Results", placeholder="W W L W W",                 key="p1f")
+        p1_strength = st.text_input("P1 Key Strengths",  placeholder="e.g. Big serve, tiebreaks", key="p1st")
     with fc2:
-        p2_name     = st.text_input("Player 2 Name",     value=pre["p2_name"],    placeholder="e.g. Daniil Medvedev",     key="p2n")
-        p2_seed     = st.text_input("P2 Ranking",        value=pre["p2_seed"],    placeholder="e.g. #4",                  key="p2s")
-        p2_odds     = st.text_input("P2 Odds",           value=pre["p2_odds"],    placeholder="e.g. -175",                key="p2o")
-        p2_form     = st.text_input("P2 Last 5 Results", value=pre["p2_form"],    placeholder="W W W L W",                key="p2f")
-        p2_strength = st.text_input("P2 Key Strengths",  value=pre["p2_strength"],placeholder="e.g. Baseline, return",   key="p2st")
+        p2_name     = st.text_input("Player 2 Name",     placeholder="e.g. Daniil Medvedev",      key="p2n")
+        p2_seed     = st.text_input("P2 Ranking",        placeholder="e.g. #4",                   key="p2s")
+        p2_odds     = st.text_input("P2 Odds",           placeholder="e.g. -175",                 key="p2o")
+        p2_form     = st.text_input("P2 Last 5 Results", placeholder="W W W L W",                 key="p2f")
+        p2_strength = st.text_input("P2 Key Strengths",  placeholder="e.g. Baseline, return",     key="p2st")
 
     st.markdown('<div class="form-section-title">🏟️ Match Context</div>', unsafe_allow_html=True)
     mc1, mc2, mc3 = st.columns(3)
     surf_opts   = ["Hard (Outdoor)","Hard (Indoor)","Clay","Grass"]
     surf_idx    = surf_opts.index(pre["surface"]) if pre["surface"] in surf_opts else 0
     with mc1:
-        tournament = st.text_input("Tournament", value=pre["tournament"], placeholder="e.g. ATP Indian Wells", key="tourn")
-        round_     = st.text_input("Round",      value=pre["round"],      placeholder="e.g. Quarterfinal",     key="rnd")
+        if "tourn" not in st.session_state: st.session_state["tourn"] = pre["tournament"]
+        if "rnd"   not in st.session_state: st.session_state["rnd"]   = pre["round"]
+        tournament = st.text_input("Tournament", placeholder="e.g. ATP Indian Wells", key="tourn")
+        round_     = st.text_input("Round",      placeholder="e.g. Quarterfinal",     key="rnd")
     with mc2:
         surface     = st.selectbox("Surface",     surf_opts, index=surf_idx, key="surf")
         court_speed = st.selectbox("Court Speed", ["Slow","Medium-Slow","Medium","Medium-Fast","Fast"], key="spd")
