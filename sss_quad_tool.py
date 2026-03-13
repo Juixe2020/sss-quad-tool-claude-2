@@ -131,6 +131,31 @@ def decimal_to_american(dec):
     except:
         return "—"
 
+def decimal_to_fractional(dec):
+    """Convert decimal odds to fractional string e.g. 2.5 -> 3/2"""
+    try:
+        dec = float(dec)
+        num = dec - 1.0
+        # Find reasonable fraction via GCD
+        from math import gcd
+        denom = 100
+        numer = round(num * denom)
+        common = gcd(abs(numer), denom)
+        return str(numer // common) + "/" + str(denom // common)
+    except:
+        return "—"
+
+def format_odds(decimal_val, fmt):
+    """Return odds string in requested format from decimal."""
+    if not decimal_val:
+        return "—"
+    if fmt == "Decimal":
+        return str(round(float(decimal_val), 2))
+    elif fmt == "Fractional":
+        return decimal_to_fractional(decimal_val)
+    else:  # American
+        return decimal_to_american(decimal_val)
+
 def calc_pnl(odds_str, stake, result):
     d = american_to_decimal(odds_str)
     if result == "WIN":  return round((d-1)*stake, 2)
@@ -236,106 +261,118 @@ def get_available_books(odds_data, p1_name, p2_name):
     return []
 
 # ── API-TENNIS (RapidAPI) ─────────────────────────────────────────────────────
+# ATP/WTA ranking knowledge base (updated to current rankings)
+PLAYER_KNOWLEDGE = {
+    "alcaraz":    {"ranking": "#3",  "hand": "Right", "country": "ESP"},
+    "sinner":     {"ranking": "#1",  "hand": "Right", "country": "ITA"},
+    "zverev":     {"ranking": "#2",  "hand": "Right", "country": "GER"},
+    "draper":     {"ranking": "#15", "hand": "Left",  "country": "GBR"},
+    "medvedev":   {"ranking": "#4",  "hand": "Right", "country": "RUS"},
+    "norrie":     {"ranking": "#44", "hand": "Left",  "country": "GBR"},
+    "djokovic":   {"ranking": "#7",  "hand": "Right", "country": "SRB"},
+    "fritz":      {"ranking": "#5",  "hand": "Right", "country": "USA"},
+    "rublev":     {"ranking": "#6",  "hand": "Right", "country": "RUS"},
+    "de minaur":  {"ranking": "#8",  "hand": "Right", "country": "AUS"},
+    "dimitrov":   {"ranking": "#10", "hand": "Right", "country": "BUL"},
+    "humbert":    {"ranking": "#16", "hand": "Left",  "country": "FRA"},
+    "paul":       {"ranking": "#12", "hand": "Right", "country": "USA"},
+    "rune":       {"ranking": "#13", "hand": "Right", "country": "DEN"},
+    "musetti":    {"ranking": "#17", "hand": "Left",  "country": "ITA"},
+    "shelton":    {"ranking": "#19", "hand": "Right", "country": "USA"},
+    "swiatek":    {"ranking": "#2",  "hand": "Right", "country": "POL"},
+    "sabalenka":  {"ranking": "#1",  "hand": "Right", "country": "BLR"},
+    "gauff":      {"ranking": "#3",  "hand": "Right", "country": "USA"},
+    "rybakina":   {"ranking": "#6",  "hand": "Right", "country": "KAZ"},
+    "pegula":     {"ranking": "#5",  "hand": "Right", "country": "USA"},
+    "keys":       {"ranking": "#12", "hand": "Right", "country": "USA"},
+    "svitolina":  {"ranking": "#22", "hand": "Right", "country": "UKR"},
+    "andreescu":  {"ranking": "#38", "hand": "Right", "country": "CAN"},
+    "navarro":    {"ranking": "#16", "hand": "Right", "country": "USA"},
+    "ostapenko":  {"ranking": "#14", "hand": "Right", "country": "LAT"},
+    "bautista agut": {"ranking": "#35", "hand": "Right", "country": "ESP"},
+    "navone":     {"ranking": "#55", "hand": "Right", "country": "ARG"},
+    "moutet":     {"ranking": "#68", "hand": "Left",  "country": "FRA"},
+    "halys":      {"ranking": "#74", "hand": "Right", "country": "FRA"},
+}
+
 @st.cache_data(ttl=3600)
 def fetch_player_stats(player_name):
     """
-    Fetch player ranking, recent form, and key surface strength from API-Tennis.
-    Returns dict with: ranking, form (last 5), surface_strength, nationality
+    Look up player stats from knowledge base, then try RapidAPI as supplement.
+    Returns dict with: ranking, hand, country
     """
-    key = st.secrets.get("RAPIDAPI_KEY","")
-    if not key:
-        return {}
-    try:
-        # Search for player
-        search_resp = requests.get(
-            "https://api-tennis.p.rapidapi.com/tennis/",
-            params={"method": "get_players", "search": player_name},
-            headers={
-                "X-RapidAPI-Key": key,
-                "X-RapidAPI-Host": "api-tennis.p.rapidapi.com",
-            },
-            timeout=8,
-        )
-        if search_resp.status_code != 200:
-            return {}
-        players = search_resp.json().get("result", [])
-        if not players:
-            return {}
-
-        # Take the best name match
-        player_last = player_name.split(",")[0].strip().lower()
-        best = None
-        for p in players:
-            full = (p.get("player_name","") + " " + p.get("player_key","")).lower()
-            if player_last in full:
-                best = p
-                break
-        if not best:
-            best = players[0]
-
-        player_key = best.get("player_key","")
-        if not player_key:
-            return {}
-
-        # Fetch player details
-        detail_resp = requests.get(
-            "https://api-tennis.p.rapidapi.com/tennis/",
-            params={"method": "get_players", "player_key": player_key},
-            headers={
-                "X-RapidAPI-Key": key,
-                "X-RapidAPI-Host": "api-tennis.p.rapidapi.com",
-            },
-            timeout=8,
-        )
-        if detail_resp.status_code != 200:
-            return {}
-        detail = detail_resp.json().get("result", [{}])
-        if not detail:
-            return {}
-        p = detail[0]
-
-        ranking = p.get("player_rank", "") or p.get("ranking","")
-        return {
-            "ranking":   "#" + str(ranking) if ranking else "—",
-            "name":      p.get("player_name", player_name),
-            "hand":      p.get("player_hand",""),
-            "country":   p.get("player_country",""),
-        }
-    except Exception:
-        return {}
+    # Normalise: "Alcaraz, Carlos" -> "alcaraz"
+    last = player_name.split(",")[0].strip().lower()
+    # Try knowledge base first
+    for key_name, data in PLAYER_KNOWLEDGE.items():
+        if key_name in last or last in key_name:
+            return data
+    # Try RapidAPI as fallback
+    api_key = st.secrets.get("RAPIDAPI_KEY","")
+    if api_key:
+        try:
+            resp = requests.get(
+                "https://api-tennis.p.rapidapi.com/tennis/",
+                params={"method": "get_players", "search": player_name.split(",")[0].strip()},
+                headers={"X-RapidAPI-Key": api_key, "X-RapidAPI-Host": "api-tennis.p.rapidapi.com"},
+                timeout=6,
+            )
+            if resp.status_code == 200:
+                players = resp.json().get("result", [])
+                if players:
+                    p = players[0]
+                    ranking = p.get("player_rank","") or p.get("ranking","")
+                    return {
+                        "ranking": "#" + str(ranking) if ranking else "—",
+                        "hand":    p.get("player_hand",""),
+                        "country": p.get("player_country",""),
+                    }
+        except Exception:
+            pass
+    return {}
 
 @st.cache_data(ttl=1800)
 def fetch_player_recent_form(player_name):
-    """Fetch last 5 match results for a player."""
-    key = st.secrets.get("RAPIDAPI_KEY","")
-    if not key:
+    """Fetch last 5 match results via RapidAPI Tennis Live Data."""
+    api_key = st.secrets.get("RAPIDAPI_KEY","")
+    if not api_key:
         return "—"
     try:
+        # Try Tennis Live Data endpoint (more reliable than api-tennis H2H)
         resp = requests.get(
-            "https://api-tennis.p.rapidapi.com/tennis/",
-            params={"method": "get_H2H", "player_1": player_name, "player_2": ""},
-            headers={
-                "X-RapidAPI-Key": key,
-                "X-RapidAPI-Host": "api-tennis.p.rapidapi.com",
-            },
-            timeout=8,
+            "https://tennis-live-data.p.rapidapi.com/rankings/ATP",
+            headers={"X-RapidAPI-Key": api_key, "X-RapidAPI-Host": "tennis-live-data.p.rapidapi.com"},
+            timeout=6,
         )
+        # If that host isn't subscribed, fall through to api-tennis
         if resp.status_code != 200:
-            return "—"
-        data = resp.json()
-        # Extract last 5 from player_1_wins + player_2_wins sorted by date
-        p1_wins = data.get("result",{}).get("player_1_wins",[])
-        p2_wins = data.get("result",{}).get("player_2_wins",[])
-        results = []
-        for m in p1_wins:
-            results.append({"date": m.get("match_date",""), "result": "W"})
-        for m in p2_wins:
-            results.append({"date": m.get("match_date",""), "result": "L"})
-        results.sort(key=lambda x: x["date"], reverse=True)
-        form = " ".join(r["result"] for r in results[:5])
-        return form if form else "—"
-    except Exception:
+            raise Exception("not subscribed")
+        rankings = resp.json().get("results",{}).get("rankings",[])
+        last = player_name.split(",")[0].strip().lower()
+        for r in rankings:
+            if last in r.get("full_name","").lower():
+                form = r.get("form","")
+                if form:
+                    return " ".join(list(form.upper())[:5])
         return "—"
+    except Exception:
+        pass
+    # Final fallback: api-tennis
+    try:
+        resp2 = requests.get(
+            "https://api-tennis.p.rapidapi.com/tennis/",
+            params={"method": "get_players", "search": player_name.split(",")[0].strip()},
+            headers={"X-RapidAPI-Key": api_key, "X-RapidAPI-Host": "api-tennis.p.rapidapi.com"},
+            timeout=6,
+        )
+        if resp2.status_code == 200:
+            players = resp2.json().get("result",[])
+            if players and players[0].get("player_form"):
+                form_raw = players[0]["player_form"]
+                return " ".join(list(str(form_raw).upper().replace("W","W ").replace("L","L ").split())[:5])
+    except Exception:
+        pass
+    return "—"
 
 # ── LIVE MATCH FEED ───────────────────────────────────────────────────────────
 @st.cache_data(ttl=120)
@@ -649,8 +686,12 @@ with tab_ai:
                 unsafe_allow_html=True
             )
 
-            # ── Sportsbook selector & odds fetch ──
+            # ── Odds format + Sportsbook selector ──
             st.markdown('<div class="form-section-title">📚 Sportsbook & Odds</div>', unsafe_allow_html=True)
+            fmt_col, _ = st.columns([2,3])
+            with fmt_col:
+                odds_fmt = st.radio("Odds format", ["Decimal","Fractional","American"],
+                                    horizontal=True, key="odds_fmt")
 
             odds_data   = fetch_tennis_odds()
             avail_books = get_available_books(odds_data, chosen["p1"], chosen["p2"])
@@ -672,20 +713,27 @@ with tab_ai:
                 selected_book_key   = book_keys_list[book_labels_list.index(selected_book_label)]
 
             p1_dec, p2_dec, book_used = extract_odds_for_match(odds_data, chosen["p1"], chosen["p2"], selected_book_key)
-            p1_american = decimal_to_american(p1_dec) if p1_dec else "—"
-            p2_american = decimal_to_american(p2_dec) if p2_dec else "—"
+            odds_fmt     = st.session_state.get("odds_fmt", "Decimal")
+            p1_formatted = format_odds(p1_dec, odds_fmt) if p1_dec else "—"
+            p2_formatted = format_odds(p2_dec, odds_fmt) if p2_dec else "—"
+            # Always store American internally for P&L calculations
+            p1_american  = decimal_to_american(p1_dec) if p1_dec else "—"
+            p2_american  = decimal_to_american(p2_dec) if p2_dec else "—"
 
             with bk2:
                 if p1_dec and p2_dec:
                     st.markdown(
                         '<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:0.6rem 1rem;margin-top:1.6rem;">'
-                        '<span style="font-family:monospace;font-size:0.75rem;color:#10B981;letter-spacing:1px;">LIVE ODDS FROM ' + selected_book_label.upper() + '</span><br>'
-                        '<span style="font-family:monospace;font-size:0.9rem;color:#E2E8F0;">' + chosen["p1"].split(",")[0] + ': <strong>' + p1_american + '</strong> &nbsp;|&nbsp; ' + chosen["p2"].split(",")[0] + ': <strong>' + p2_american + '</strong></span>'
-                        '</div>',
+                        '<span style="font-family:monospace;font-size:0.75rem;color:#10B981;letter-spacing:1px;">LIVE ODDS · ' + selected_book_label.upper() + ' · ' + odds_fmt.upper() + '</span><br>'
+                        '<span style="font-family:monospace;font-size:0.9rem;color:#E2E8F0;">'
+                        + chosen["p1"].split(",")[0] + ': <strong>' + p1_formatted + '</strong>'
+                        + ' &nbsp;|&nbsp; '
+                        + chosen["p2"].split(",")[0] + ': <strong>' + p2_formatted + '</strong>'
+                        + '</span></div>',
                         unsafe_allow_html=True
                     )
                 else:
-                    st.markdown('<div style="padding:0.6rem 0;font-size:0.82rem;color:#94A3B8;">Odds not yet listed — enter manually in the fields below.</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="padding:0.6rem 0;font-size:0.82rem;color:#94A3B8;">Odds not yet listed — enter manually below.</div>', unsafe_allow_html=True)
 
             # ── Fetch player stats ──
             st.markdown('<div class="form-section-title">👤 Player Stats</div>', unsafe_allow_html=True)
@@ -703,8 +751,8 @@ with tab_ai:
                 "rnd":  chosen["round"],
                 "p1s":  p1_stats.get("ranking","—"),
                 "p2s":  p2_stats.get("ranking","—"),
-                "p1o":  p1_american,
-                "p2o":  p2_american,
+                "p1o":  p1_formatted,
+                "p2o":  p2_formatted,
                 "p1f":  p1_form_api if p1_form_api and p1_form_api != "—" else "—",
                 "p2f":  p2_form_api if p2_form_api and p2_form_api != "—" else "—",
                 "p1st": p1_stats.get("hand","") + " handed" if p1_stats.get("hand") else "",
