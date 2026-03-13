@@ -226,6 +226,10 @@ MATCHES = {
 # AI QUAD GENERATOR
 # ─────────────────────────────────────────
 def call_claude(prompt: str) -> dict:
+    api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY not found in Streamlit secrets. Please add it in your app settings.")
+
     system = """You are an elite tennis betting analyst specialising in the SSS Method and Quadrant Research Method.
 
 Respond with ONLY a valid JSON object — no preamble, no markdown fences, no extra text.
@@ -256,7 +260,11 @@ Rules:
 
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        },
         json=payload,
         timeout=45,
     )
